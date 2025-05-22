@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 3
+names: ['Anorganik', 'B3', 'Organik']
+
+roboflow:
+  workspace: kelompok-ksc
+  project: garbage_detection-xgoco
+  version: 3
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/kelompok-ksc/garbage_detection-xgoco/dataset/3
