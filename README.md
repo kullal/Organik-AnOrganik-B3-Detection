@@ -108,7 +108,7 @@ project/
 ## 🔄 Training Model
 Model dilatih menggunakan GPU di Google Colab dengan dataset yang telah diannotasi. Parameter training:
 - Model dasar: YOLOv8n
-- Epochs: 50
+- Epochs: 10
 - Image size: 640
 - Batch size: 16
 
