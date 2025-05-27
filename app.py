@@ -1,188 +1,153 @@
 import streamlit as st
 import cv2
-import numpy as np
-from ultralytics import YOLO
 import tempfile
 import time
-from PIL import Image
+import os
+import numpy as np
+from ultralytics import YOLO
 
-# Set page config
+# Set page title and configuration
 st.set_page_config(
     page_title="Deteksi Organik dan Anorganik",
-    page_icon="🔍",
     layout="wide"
 )
 
 # Initialize session state
+if 'stop' not in st.session_state:
+    st.session_state.stop = False
+    
 if 'camera_running' not in st.session_state:
     st.session_state.camera_running = False
 
-# Title
-st.title("Deteksi Organik dan Anorganik")
-st.markdown("### Sistem Deteksi Sampah Organik dan Anorganik Menggunakan YOLOv8")
-
-# Load YOLOv8 model
+# Load the YOLOv8 model
 @st.cache_resource
 def load_model():
     return YOLO('Training/weights/best.pt')
 
 model = load_model()
 
-# Create sidebar
+# Page title and description
+st.title("Deteksi Organik dan Anorganik")
+st.markdown("Aplikasi ini menggunakan YOLOv8 untuk mendeteksi objek organik dan anorganik.")
+
+# Sidebar
 st.sidebar.title("Pengaturan")
-detection_mode = st.sidebar.radio("Mode Deteksi", ["Real-time", "Upload Gambar/Video"])
+detection_mode = st.sidebar.radio("Pilih Mode Deteksi:", ["Real-time", "Upload Gambar"])
 
-if detection_mode == "Real-time":
-    # Camera selection
-    camera_options = {
-        "Kamera Default (0)": 0,
-        "Kamera Eksternal (1)": 1
-    }
-    selected_camera = st.sidebar.selectbox("Pilih Kamera", list(camera_options.keys()))
-    camera_id = camera_options[selected_camera]
+# Function for real-time detection
+def real_time_detection(camera_index):
+    st.session_state.camera_running = True
+    st.session_state.stop = False
     
-    # Confidence threshold
-    conf_threshold = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.5, 0.05)
+    # Create a stop button
+    stop_button_placeholder = st.empty()
+    stop_button = stop_button_placeholder.button(
+        "Stop", key='stop_button',
+        on_click=lambda: setattr(st.session_state, 'stop', True)
+    )
     
-    # Create a placeholder for the video feed
-    video_placeholder = st.empty()
+    stframe = st.empty()
+    cap = cv2.VideoCapture(camera_index)
     
-    # Start/Stop buttons
-    col1, col2 = st.sidebar.columns(2)
-    
-    with col1:
-        start_button = st.button("Mulai Deteksi")
-    
-    with col2:
-        stop_button = st.button("Hentikan Deteksi")
-    
-    if start_button:
-        st.session_state.camera_running = True
-        
-    if stop_button:
+    # Check if camera opened successfully
+    if not cap.isOpened():
+        st.error(f"Tidak dapat mengakses kamera {camera_index}. Periksa koneksi kamera atau coba kamera lain.")
         st.session_state.camera_running = False
-        st.info("Deteksi dihentikan.")
+        return
     
-    # Run the detection if camera is running
-    if st.session_state.camera_running:
-        try:
-            cap = cv2.VideoCapture(camera_id)
+    try:
+        while cap.isOpened() and not st.session_state.stop:
+            ret, frame = cap.read()
+            if not ret:
+                st.error("Error: Tidak dapat membaca frame dari kamera.")
+                break
             
-            if not cap.isOpened():
-                st.error(f"Tidak dapat membuka kamera {camera_id}. Pastikan kamera terhubung dan tidak digunakan oleh aplikasi lain.")
-                st.session_state.camera_running = False
-            else:
-                st.success(f"Kamera {camera_id} berhasil dibuka.")
-                
-                # Use a "stop" button to exit the loop
-                while st.session_state.camera_running:
-                    ret, frame = cap.read()
-                    
-                    if not ret:
-                        st.error("Tidak dapat membaca frame dari kamera.")
-                        st.session_state.camera_running = False
-                        break
-                    
-                    # Deteksi objek pada frame
-                    results = model(frame, conf=conf_threshold, device='cpu')
-                    
-                    # Visualisasi hasil deteksi
-                    annotated_frame = results[0].plot()
-                    
-                    # Convert to RGB (streamlit uses RGB)
-                    annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                    
-                    # Show the frame
-                    video_placeholder.image(annotated_frame_rgb, channels="RGB", use_column_width=True)
-                    
-                    # Short delay to reduce CPU usage
-                    time.sleep(0.01)
-                
-                # Release the camera
-                cap.release()
-                st.info("Kamera telah dilepaskan.")
-                
-        except Exception as e:
-            st.error(f"Error: {str(e)}")
-            st.session_state.camera_running = False
-
-elif detection_mode == "Upload Gambar/Video":
-    # File uploader
-    uploaded_file = st.sidebar.file_uploader("Upload Gambar atau Video", type=["jpg", "jpeg", "png", "mp4", "avi"])
+            # Resize for better performance
+            frame = cv2.resize(frame, (640, 480))
+            
+            # Perform detection
+            results = model(frame, device='cpu')
+            
+            # Draw results on frame
+            annotated_frame = results[0].plot()
+            
+            # Convert to RGB for streamlit
+            annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+            
+            # Display the frame
+            stframe.image(annotated_frame_rgb, caption=f"Deteksi Real-time (Kamera {camera_index})", use_column_width=True)
+            
+            # Add a small sleep to reduce CPU usage
+            time.sleep(0.01)
     
-    # Confidence threshold
-    conf_threshold = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.5, 0.05)
+    except Exception as e:
+        st.error(f"Error dalam proses deteksi: {e}")
+    finally:
+        cap.release()
+        st.session_state.camera_running = False
+        stop_button_placeholder.empty()
+        stframe.empty()
+        st.success("Deteksi dihentikan")
+
+# Function for image upload detection
+def process_uploaded_image(uploaded_file):
+    # Create a temporary file to save the uploaded file
+    temp_file = tempfile.NamedTemporaryFile(delete=False)
+    temp_file.write(uploaded_file.read())
+    temp_file_path = temp_file.name
+    temp_file.close()
+    
+    # Read the image
+    image = cv2.imread(temp_file_path)
+    
+    if image is None:
+        st.error("Error: Tidak dapat membaca gambar yang diunggah. Pastikan format gambar didukung.")
+        os.unlink(temp_file_path)
+        return
+    
+    # Perform detection
+    results = model(image, device='cpu')
+    
+    # Draw results on image
+    annotated_image = results[0].plot()
+    
+    # Convert to RGB for streamlit
+    annotated_image_rgb = cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB)
+    
+    # Display the result
+    st.image(annotated_image_rgb, caption="Hasil Deteksi", use_column_width=True)
+    
+    # Clean up the temporary file
+    os.unlink(temp_file_path)
+
+# Main functionality
+if detection_mode == "Real-time":
+    st.header("Deteksi Real-time")
+    
+    camera_options = {
+        "Webcam Utama (0)": 0,
+        "Webcam Eksternal (1)": 1
+    }
+    selected_camera = st.selectbox(
+        "Pilih Kamera:",
+        options=list(camera_options.keys())
+    )
+    camera_index = camera_options[selected_camera]
+    
+    # Start/Stop button logic
+    if not st.session_state.camera_running:
+        start_button = st.button("Mulai Deteksi")
+        if start_button:
+            real_time_detection(camera_index)
+
+else:  # Upload Image mode
+    st.header("Deteksi dari Gambar")
+    uploaded_file = st.file_uploader("Pilih gambar...", type=["jpg", "jpeg", "png"])
     
     if uploaded_file is not None:
-        # Check if the file is an image or video
-        file_type = uploaded_file.name.split(".")[-1].lower()
-        
-        if file_type in ["jpg", "jpeg", "png"]:
-            # Process image
-            image = Image.open(uploaded_file)
-            image_np = np.array(image)
-            
-            # Deteksi objek pada gambar
-            results = model(image_np, conf=conf_threshold, device='cpu')
-            
-            # Visualisasi hasil deteksi
-            annotated_img = results[0].plot()
-            
-            # Convert to RGB if needed
-            if len(annotated_img.shape) == 3 and annotated_img.shape[2] == 3:
-                if file_type != "png":  # No need to convert if PNG
-                    annotated_img = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
-            
-            # Display the result
-            st.image(annotated_img, caption="Hasil Deteksi", use_column_width=True)
-            
-        elif file_type in ["mp4", "avi"]:
-            # Save the uploaded video to a temporary file
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_type}")
-            temp_file.write(uploaded_file.read())
-            
-            # Process video
-            cap = cv2.VideoCapture(temp_file.name)
-            
-            # Get video properties
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            
-            # Create a placeholder for the video
-            video_placeholder = st.empty()
-            
-            st.info("Memproses video... Harap tunggu.")
-            
-            # Process and display the video
-            while cap.isOpened():
-                ret, frame = cap.read()
-                
-                if not ret:
-                    break
-                
-                # Deteksi objek pada frame
-                results = model(frame, conf=conf_threshold, device='cpu')
-                
-                # Visualisasi hasil deteksi
-                annotated_frame = results[0].plot()
-                
-                # Convert to RGB
-                annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                
-                # Show the frame
-                video_placeholder.image(annotated_frame_rgb, channels="RGB", use_column_width=True)
-                
-                # Control playback speed (adjust as needed)
-                time.sleep(1/fps)
-            
-            # Release resources
-            cap.release()
-            st.success("Pemrosesan video selesai.")
-    else:
-        st.info("Silakan upload gambar atau video untuk dideteksi.")
+        process_uploaded_image(uploaded_file)
 
-# Add credit footer
+# Footer
 st.markdown("---")
-st.markdown("**Credit: Dibuat oleh Kelompok 3**")
-st.markdown("Aplikasi deteksi sampah organik dan anorganik menggunakan YOLOv8") 
+st.markdown("**Credit : Dibuat oleh Kelompok 3**")
+st.markdown("*Aplikasi ini menggunakan model YOLOv8 untuk mendeteksi objek organik dan anorganik.*") 
