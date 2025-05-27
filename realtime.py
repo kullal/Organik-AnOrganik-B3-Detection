@@ -5,7 +5,7 @@ import cv2
 model = YOLO('Training/weights/best.pt')  # Ganti path jika berbeda
 
 # Buka webcam (0 = webcam default)
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(1)
 
 while True:
     ret, frame = cap.read()
