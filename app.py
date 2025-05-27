@@ -5,6 +5,10 @@ import time
 import os
 import numpy as np
 from ultralytics import YOLO
+import torch.serialization
+
+# Add safe globals for PyTorch 2.6+
+torch.serialization.add_safe_globals(['ultralytics.nn.tasks.DetectionModel'])
 
 # Set page title and configuration
 st.set_page_config(
@@ -22,9 +26,23 @@ if 'camera_running' not in st.session_state:
 # Load the YOLOv8 model
 @st.cache_resource
 def load_model():
-    return YOLO('Training/weights/best.pt')
+    try:
+        return YOLO('Training/weights/best.pt')
+    except Exception as e:
+        st.error(f"Error loading model: {str(e)}")
+        # Alternative loading approach for PyTorch 2.6+
+        try:
+            return YOLO('Training/weights/best.pt', task='detect')
+        except Exception as e2:
+            st.error(f"Still could not load model: {str(e2)}")
+            return None
 
 model = load_model()
+
+# Check if model loaded successfully
+if model is None:
+    st.error("Failed to load model. Please check if the model file exists at 'Training/weights/best.pt'")
+    st.stop()
 
 # Page title and description
 st.title("Deteksi Organik dan Anorganik")
