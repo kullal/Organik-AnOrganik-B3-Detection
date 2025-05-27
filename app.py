@@ -11,14 +11,7 @@ import torch
 st.set_page_config(
     page_title="Deteksi Organik dan Anorganik",
     layout="wide",
-    initial_sidebar_state="expanded",
-    theme={
-        "primaryColor": "#FF4B4B",
-        "backgroundColor": "#F0F2F6",
-        "secondaryBackgroundColor": "#FFFFFF",
-        "textColor": "#262730",
-        "font": "sans serif"
-    }
+    initial_sidebar_state="expanded"
 )
 
 # Initialize session state
