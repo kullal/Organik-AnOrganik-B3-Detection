@@ -2,12 +2,12 @@ train: ../train/images
 val: ../valid/images
 test: ../test/images
 
-nc: 3
-names: ['Anorganik', 'B3', 'Organik']
+nc: 2
+names: ['Anorganik', 'Organik']
 
 roboflow:
-  workspace: kelompok-ksc
-  project: garbage_detection-xgoco
-  version: 3
+  workspace: nopaldataset
+  project: waste_detection_organic_anorganic
+  version: 2
   license: CC BY 4.0
-  url: https://universe.roboflow.com/kelompok-ksc/garbage_detection-xgoco/dataset/3
+  url: https://universe.roboflow.com/nopaldataset/waste_detection_organic_anorganic/dataset/2
